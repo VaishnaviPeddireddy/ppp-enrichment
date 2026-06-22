@@ -81,12 +81,13 @@ jobs:
           DOMAIN_LEAD_TIME_LIMIT_SECONDS: "20"
         run: python -m src.ppp_enrichment.run_pipeline --leads 500 --oversample-factor 5
 
-      - name: Commit clean output back to repo
+      - name: Commit clean output and queue updates back to repo
         if: steps.check_queue.outputs.chunks_available != '0'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/output/clean_leads_*.csv
+          git add -u -- data/input/queue/
           git add clean_github_results/ 2>/dev/null || true
           git diff --staged --quiet || git commit -m "pipeline: $(date +'%Y-%m-%d %H:%M UTC') — clean leads"
           git push

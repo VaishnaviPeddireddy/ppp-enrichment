@@ -19,9 +19,10 @@ logs/
 data/input/*.csv
 data/input/*.xlsx
 
-# Local pipeline output (CI may commit clean_leads via workflow)
+# Local pipeline output (CI commits clean_leads_*.csv back to the repo)
 data/output/*
 !data/output/.gitkeep
+!data/output/clean_leads_*.csv
 
 # Temp / intermediate
 data/output/raw_*.csv
