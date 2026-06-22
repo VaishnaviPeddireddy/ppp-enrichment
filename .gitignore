@@ -15,9 +15,8 @@ __pycache__/
 logs/
 *.log
 
-# Large PPP datasets and derived queue chunks (keep locally; CI uses Actions cache + optional secret)
+# Large PPP master datasets (keep locally; queue chunks under data/input/queue/ are tracked)
 data/input/*.csv
-data/input/queue/*.csv
 data/input/*.xlsx
 
 # Local pipeline output (CI may commit clean_leads via workflow)
