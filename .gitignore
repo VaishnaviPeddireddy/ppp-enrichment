@@ -1,0 +1,31 @@
+# Local environment
+config/.env
+.venv/
+venv/
+
+# Cursor / IDE (local workspace)
+.cursor/
+.cursorignore
+
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+logs/
+*.log
+
+# Large PPP datasets and derived queue chunks (keep locally; CI uses Actions cache + optional secret)
+data/input/*.csv
+data/input/queue/*.csv
+data/input/*.xlsx
+
+# Local pipeline output (CI may commit clean_leads via workflow)
+data/output/*
+!data/output/.gitkeep
+
+# Temp / intermediate
+data/output/raw_*.csv
+data/output/debug_*.csv
+data/output/temp_*.csv
+*.tmp

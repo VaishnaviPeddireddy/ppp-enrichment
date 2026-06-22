@@ -1,0 +1,49 @@
+name: Seed PPP queue (one-time)
+
+# Run manually once after adding repo secret PPP_DATASET_URL (direct link to your PPP CSV).
+# Splits the file into queue chunks and saves them to the Actions cache for scheduled runs.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download and split PPP dataset
+        env:
+          PPP_DATASET_URL: ${{ secrets.PPP_DATASET_URL }}
+        run: |
+          if [ -z "$PPP_DATASET_URL" ]; then
+            echo "::error::Set repository secret PPP_DATASET_URL to a direct download URL for your PPP CSV."
+            exit 1
+          fi
+          mkdir -p data/input/queue
+          curl -fsSL -o data/input/ppp-war.csv "$PPP_DATASET_URL"
+          python -m src.ppp_enrichment.run_split_ppp_csv \
+            --path data/input/ppp-war.csv \
+            --rows 2000 \
+            --out-dir data/input/queue
+          rm -f data/input/ppp-war.csv
+          echo "Created $(find data/input/queue -name 'ppp-war_part*.csv' | wc -l) chunk(s)."
+
+      - name: Save queue to Actions cache
+        uses: actions/cache/save@v4
+        with:
+          path: data/input/queue
+          key: ppp-queue-${{ github.ref_name }}
