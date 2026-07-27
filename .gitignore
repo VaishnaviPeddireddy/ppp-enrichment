@@ -23,6 +23,8 @@ data/input/*.xlsx
 data/output/*
 !data/output/.gitkeep
 !data/output/clean_leads_*.csv
+!data/output/1000_clean_leads/
+!data/output/1000_clean_leads/**
 
 # Temp / intermediate
 data/output/raw_*.csv

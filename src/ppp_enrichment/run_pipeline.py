@@ -299,6 +299,7 @@ def _build_clean_leads(
             "dropped_missing_phone": 0,
             "dropped_fake_phone": 0,
             "dropped_duplicates": 0,
+            "dropped_industry_keywords": 0,
         }
 
     df = _prepare_enriched_columns_for_clean(enriched_df, logger)
@@ -316,6 +317,7 @@ def _build_clean_leads(
             "dropped_missing_phone": 0,
             "dropped_fake_phone": 0,
             "dropped_duplicates": 0,
+            "dropped_industry_keywords": 0,
         }
 
     out = pd.DataFrame({display: filtered[internal] for display, internal in _CLEAN_COLS})
@@ -351,6 +353,15 @@ def _build_clean_leads(
     )
     dropped_duplicates = before_dedup - len(out)
 
+    before_industry = len(out)
+    out, dropped_industry = run_export_clean._drop_blocked_industry_leads(out)  # noqa: SLF001
+    if dropped_industry:
+        logger.info(
+            "Dropped %s lead(s) matching blocked industry keywords (%s remaining).",
+            dropped_industry,
+            before_industry - dropped_industry,
+        )
+
     if len(out) > max_rows:
         out = out.iloc[:max_rows].copy()
     clean_count = len(out)
@@ -358,6 +369,7 @@ def _build_clean_leads(
         "dropped_missing_phone": int(dropped_missing_phone),
         "dropped_fake_phone": int(dropped_fake_phone),
         "dropped_duplicates": int(dropped_duplicates),
+        "dropped_industry_keywords": int(dropped_industry),
     }
     return out, clean_count, stats
 
@@ -477,6 +489,7 @@ def main(argv: list[str] | None = None) -> None:
         "dropped_missing_phone": 0,
         "dropped_fake_phone": 0,
         "dropped_duplicates": 0,
+        "dropped_industry_keywords": 0,
     }
     rows_with_domain = 0
     remaining_n = 0
@@ -680,6 +693,10 @@ def main(argv: list[str] | None = None) -> None:
         print(f"Rows dropped due to missing phone: {clean_stats['dropped_missing_phone']}")
         print(f"Rows dropped due to fake phone: {clean_stats['dropped_fake_phone']}")
         print(f"Duplicate rows removed: {clean_stats['dropped_duplicates']}")
+        print(
+            f"Rows dropped due to industry keywords: "
+            f"{clean_stats.get('dropped_industry_keywords', 0)}"
+        )
         print(f"Clean leads produced: {clean_count}")
         print(f"Rows skipped (time budget): {skipped}")
         if clean_path is not None:

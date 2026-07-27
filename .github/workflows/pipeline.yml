@@ -8,6 +8,11 @@ on:
 permissions:
   contents: write             # required to commit output files and delete chunks
 
+# One pipeline at a time so queue commits cannot race.
+concurrency:
+  group: ppp-enrichment-pipeline
+  cancel-in-progress: false
+
 jobs:
   run-pipeline:
     runs-on: ubuntu-latest
@@ -35,14 +40,9 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Restore PPP queue cache
-        uses: actions/cache/restore@v4
-        id: queue-cache
-        with:
-          path: data/input/queue
-          key: ppp-queue-${{ github.ref_name }}
-          restore-keys: |
-            ppp-queue-${{ github.ref_name }}
+      # Queue progress lives in git only. Do NOT restore an Actions cache over
+      # data/input/queue — an immutable ppp-queue-* key was replaying the same
+      # chunk (e.g. part002) every run and producing duplicate clean_leads.
 
       - name: Bootstrap queue from dataset URL (first run only)
         env:
@@ -71,7 +71,8 @@ jobs:
           if [ "$COUNT" -eq "0" ]; then
             echo "::warning::Queue is empty. No chunk files found in data/input/queue/"
           else
-            echo "Found $COUNT chunk(s) in queue."
+            NEXT=$(ls data/input/queue/ppp-war_part*.csv 2>/dev/null | sort | head -n 1)
+            echo "Found $COUNT chunk(s) in queue. Next: $(basename "$NEXT")"
           fi
 
       - name: Run pipeline (500 leads)
@@ -91,10 +92,3 @@ jobs:
           git add clean_github_results/ 2>/dev/null || true
           git diff --staged --quiet || git commit -m "pipeline: $(date +'%Y-%m-%d %H:%M UTC') — clean leads"
           git push
-
-      - name: Save PPP queue cache
-        if: steps.check_queue.outputs.chunks_available != '0'
-        uses: actions/cache/save@v4
-        with:
-          path: data/input/queue
-          key: ppp-queue-${{ github.ref_name }}

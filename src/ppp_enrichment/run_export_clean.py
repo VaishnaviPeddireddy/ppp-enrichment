@@ -59,6 +59,49 @@ _EMAIL_BLOCKED_SUBSTRINGS = (
 
 _EMAIL_BLOCKED_WORD_RE = re.compile(r"\btest\b", re.IGNORECASE)
 
+# Industry / vertical keywords to exclude from clean leads (company, email, URL text).
+_INDUSTRY_BLOCKED_PHRASES = (
+    "customer service",
+    "real estate",
+)
+_INDUSTRY_BLOCKED_WORDS = (
+    "investments",
+    "investment",
+    "invest",
+    "consulting",
+    "consultant",
+    "law",
+    "legal",
+    "sales",
+    "advisors",
+    "advisor",
+    "school",
+    "financial",
+    "finance",
+    "ministries",
+    "ministry",
+    "church",
+    "orders",
+    "visit",
+    "appointments",
+    "appointment",
+    "god",
+    "wealth",
+    "inquiries",
+    "inquiry",
+    "gov",
+    "admission",
+    "admissions",
+)
+_INDUSTRY_BLOCKED_RE = re.compile(
+    r"(?:"
+    + "|".join(re.escape(p) for p in _INDUSTRY_BLOCKED_PHRASES)
+    + r"|\b(?:"
+    + "|".join(re.escape(w) for w in _INDUSTRY_BLOCKED_WORDS)
+    + r")\b)",
+    re.IGNORECASE,
+)
+
 
 _CLEAN_COLS = [
     ("First Name", "owner_first_name"),
@@ -173,6 +216,43 @@ def _email_contains_blocked_word(value: object) -> bool:
     return bool(_EMAIL_BLOCKED_WORD_RE.search(lowered))
 
 
+def _text_contains_blocked_industry_word(value: object) -> bool:
+    """True if company/email/URL text matches an excluded industry keyword."""
+    if pd.isna(value):
+        return False
+    text = str(value).strip()
+    if not text:
+        return False
+    return bool(_INDUSTRY_BLOCKED_RE.search(text))
+
+
+def _lead_row_has_blocked_industry(row: pd.Series) -> bool:
+    """Scan outbound lead columns for blocked industry keywords."""
+    for col in (
+        "Company Name",
+        "Email Address",
+        "Company URL",
+        "First Name",
+        "Second Name",
+    ):
+        if col in row.index and _text_contains_blocked_industry_word(row[col]):
+            return True
+    # Internal enriched column names (pre-rename path).
+    for col in ("company_name", "email", "website_domain", "owner_first_name", "owner_last_name"):
+        if col in row.index and _text_contains_blocked_industry_word(row[col]):
+            return True
+    return False
+
+
+def _drop_blocked_industry_leads(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
+    """Remove rows matching industry blocklist; return filtered frame and drop count."""
+    if df.empty:
+        return df.copy(), 0
+    mask = df.apply(_lead_row_has_blocked_industry, axis=1)
+    dropped = int(mask.sum())
+    return df.loc[~mask].copy(), dropped
+
+
 def _website_domain_passes_filters(website_domain: object) -> bool:
     if pd.isna(website_domain):
         return False
@@ -277,6 +357,7 @@ def main(*, enriched_path: Path | None = None) -> None:
         keep="first",
     )
     dropped_duplicates_t1 = before_dedup_t1 - len(out_tier1)
+    out_tier1, dropped_industry_t1 = _drop_blocked_industry_leads(out_tier1)
 
     mask_base_relaxed = phone_relaxed_ok
     df_relaxed = df.loc[mask_base_relaxed].copy()
@@ -325,6 +406,7 @@ def main(*, enriched_path: Path | None = None) -> None:
         keep="first",
     )
     dropped_duplicates_t2 = before_dedup_t2 - len(out_tier2)
+    out_tier2, dropped_industry_t2 = _drop_blocked_industry_leads(out_tier2)
 
     config.CLEAN_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -345,11 +427,13 @@ def main(*, enriched_path: Path | None = None) -> None:
     dropped_missing_phone_total = dropped_missing_phone_t1 + dropped_missing_phone_t2
     dropped_duplicates_total = dropped_duplicates_t1 + dropped_duplicates_t2
     dropped_fake_phone_total = dropped_fake_phone_t1 + dropped_fake_phone_t2
+    dropped_industry_total = dropped_industry_t1 + dropped_industry_t2
 
     print(f"Total enriched rows loaded: {n_loaded}")
     print(f"Rows dropped due to missing phone: {dropped_missing_phone_total}")
     print(f"Rows dropped due to fake phone: {dropped_fake_phone_total}")
     print(f"Duplicate rows removed: {dropped_duplicates_total}")
+    print(f"Rows dropped due to industry keywords: {dropped_industry_total}")
     print(f"Tier1 strict leads (phone mandatory): {n_t1}")
     print(f"Tier2 relaxed leads (email+domain, phone optional): {n_t2}")
     print(f"Number of output files written: {len(paths_written)}")
