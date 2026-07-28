@@ -44,13 +44,29 @@ def _load_all_clean_leads(files: list[Path]) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True)
 
 
+def _clear_incomplete_outputs(dest_dir: Path) -> list[Path]:
+    """Remove any existing CSVs so the folder never holds a partial batch."""
+    removed: list[Path] = []
+    if not dest_dir.exists():
+        return removed
+    for path in sorted(dest_dir.glob("*.csv")):
+        path.unlink()
+        removed.append(path)
+    return removed
+
+
 def build_1000_clean_leads(
     *,
     output_dir: Path | None = None,
     target: int | None = None,
     out_path: Path | None = None,
-) -> Path:
-    """Aggregate clean_leads_*.csv → filtered, deduped target-size CSV."""
+) -> Path | None:
+    """Aggregate clean_leads_*.csv → filtered, deduped target-size CSV.
+
+    Writes into ``1000_clean_leads/`` only when at least ``target`` unique
+    filtered leads are available. Otherwise clears any existing CSVs there
+    and returns None (partial batches are never kept).
+    """
     src_dir = output_dir or config.OUTPUT_DIR
     n_target = target if target is not None else config.CLEAN_1000_TARGET
     dest_dir = config.CLEAN_1000_DIR
@@ -64,10 +80,11 @@ def build_1000_clean_leads(
     print(f"Rows loaded (pre-filter): {loaded}")
 
     if combined.empty:
-        empty = pd.DataFrame(columns=_REQUIRED_COLS)
-        empty.to_csv(dest, index=False, encoding=config.CSV_WRITE_ENCODING)
-        print(f"Wrote empty file (no source rows): {dest}")
-        return dest
+        removed = _clear_incomplete_outputs(dest_dir)
+        for path in removed:
+            print(f"Removed incomplete file: {path}")
+        print(f"No source rows; skipped write (need {n_target} leads).")
+        return None
 
     for col in _REQUIRED_COLS:
         combined[col] = combined[col].astype("string").str.strip()
@@ -84,25 +101,33 @@ def build_1000_clean_leads(
 
     combined, dropped_industry = _drop_blocked_industry_leads(combined)
 
-    if len(combined) > n_target:
-        combined = combined.iloc[:n_target].copy()
+    print(f"Duplicate rows removed: {dropped_dupes}")
+    print(f"Rows dropped due to industry keywords: {dropped_industry}")
+    print(f"Eligible unique leads: {len(combined)} (target {n_target})")
 
+    if len(combined) < n_target:
+        removed = _clear_incomplete_outputs(dest_dir)
+        for path in removed:
+            print(f"Removed incomplete file: {path}")
+        print(
+            f"Skipped write: only {len(combined)} leads available after filters "
+            f"(need {n_target}). Folder stays empty until a full batch exists."
+        )
+        return None
+
+    combined = combined.iloc[:n_target].copy()
+
+    # Replace any prior batch with this complete one.
+    _clear_incomplete_outputs(dest_dir)
     combined.to_csv(dest, index=False, encoding=config.CSV_WRITE_ENCODING)
 
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M")
     dated = dest_dir / f"1000_clean_leads_{stamp}.csv"
     combined.to_csv(dated, index=False, encoding=config.CSV_WRITE_ENCODING)
 
-    print(f"Duplicate rows removed: {dropped_dupes}")
-    print(f"Rows dropped due to industry keywords: {dropped_industry}")
     print(f"Final lead count: {len(combined)} (target {n_target})")
     print(f"Wrote: {dest}")
     print(f"Wrote: {dated}")
-    if len(combined) < n_target:
-        print(
-            f"Warning: only {len(combined)} leads available after filters "
-            f"(need {n_target})."
-        )
     return dest
 
 

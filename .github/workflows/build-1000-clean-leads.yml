@@ -43,6 +43,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/output/1000_clean_leads/
+          # Stage adds and deletions so incomplete CSVs are removed from the repo
+          # when fewer than 1000 unique filtered leads are available.
+          git add -A data/output/1000_clean_leads/
           git diff --staged --quiet || git commit -m "1000 clean leads: $(date +'%Y-%m-%d %H:%M UTC')"
           git push
